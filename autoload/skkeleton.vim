@@ -165,6 +165,9 @@ endfunction
 function! s:complete_info() abort
   if exists('*pum#visible') && pum#visible()
     return ['pum.vim', pum#complete_info(['pum_visible', 'selected'])]
+  elseif has('nvim') && luaeval('select(2, pcall(function() return package.loaded["blink.cmp"].is_menu_visible() end)) == true')
+    let selected = luaeval('require("blink.cmp").get_selected_item() ~= nil')
+    return ['blink.cmp', {'pum_visible': v:true, 'selected': selected ? 1 : -1}]
   elseif has('nvim') && luaeval('select(2, pcall(function() return package.loaded["cmp"].visible() end)) == true')
     let selected = luaeval('require("cmp").get_active_entry() ~= nil')
     return ['cmp', {'pum_visible': v:true, 'selected': selected ? 1 : -1}]

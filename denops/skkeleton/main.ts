@@ -172,6 +172,8 @@ function handleCompleteKey(
           return "<Cmd>call pum#map#confirm()";
         case "cmp":
           return "<Cmd>lua require('cmp').confirm({select = true})";
+        case "blink.cmp":
+          return "<Cmd>lua require('blink.cmp').select_and_accept()";
       }
     }
   }
