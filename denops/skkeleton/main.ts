@@ -292,6 +292,7 @@ export const main: Entrypoint = async (denops) => {
       await init(denops);
       const { mode, prevInput } = vimStatus as VimStatus;
       const context = currentContext.get();
+      context.prevInput = prevInput;
       // 補完の後などpreEditとバッファが不一致している状態の時にリセットする
       if (mode !== "t" && !prevInput.endsWith(context.toString())) {
         await initializeStateWithAbbrev(context, ["converter"]);

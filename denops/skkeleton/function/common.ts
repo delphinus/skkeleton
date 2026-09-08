@@ -2,9 +2,11 @@ import { modifyCandidate } from "../candidate.ts";
 import { config } from "../config.ts";
 import { Context } from "../context.ts";
 import { HenkanType } from "../dictionary.ts";
-import { initializeStateWithAbbrev } from "../mode.ts";
+import { initializeStateWithAbbrev, modeChange } from "../mode.ts";
+import { graphemeLength } from "../preedit.ts";
 import { initializeState } from "../state.ts";
 import { currentLibrary } from "../store.ts";
+import { showCandidates } from "./henkan.ts";
 import { kakuteiFeed } from "./input.ts";
 import { hirakana } from "./mode.ts";
 
@@ -12,6 +14,10 @@ export async function kakutei(context: Context) {
   const state = context.state;
   switch (state.type) {
     case "henkan": {
+      // Note: henkanInput picks another candidate before the kakutei, so look
+      //       at what has been written to the buffer, not at the current state
+      const preEditStr = context.preEdit.current;
+      const snapshot = { ...state };
       const candidate = state.candidates[state.candidateIndex];
       const candidateMod = modifyCandidate(candidate, state.affix);
       if (candidate) {
@@ -32,6 +38,20 @@ export async function kakutei(context: Context) {
         : state.okuriFeed;
       const ret = (candidateMod ?? "error") + okuriStr;
       context.kakuteiWithUndoPoint(ret);
+      // Note: remember what is needed to take this kakutei back
+      //       give it up when prevInput doesn't end with the pre-edit string:
+      //       the state of the buffer cannot be restored then (e.g. when a
+      //       single key press performs kakutei more than once)
+      const { prevInput } = context;
+      context.lastKakutei = prevInput.endsWith(preEditStr)
+        ? {
+          kakutei: ret,
+          bufferText: prevInput.slice(0, prevInput.length - preEditStr.length) +
+            ret,
+          state: snapshot,
+          mode: context.mode,
+        }
+        : undefined;
       break;
     }
     case "input": {
@@ -49,6 +69,34 @@ export async function kakutei(context: Context) {
       );
   }
   await initializeStateWithAbbrev(context, ["converter", "table"]);
+}
+
+// take the last kakutei back into the candidate selection state
+export async function kakuteiUndo(context: Context) {
+  const state = context.state;
+  const last = context.lastKakutei;
+  if (
+    !last ||
+    state.type !== "input" ||
+    state.mode !== "direct" ||
+    state.feed !== "" ||
+    // cannot take it back when the confirmed string is no longer before the cursor
+    context.prevInput !== last.bufferText
+  ) {
+    return;
+  }
+  context.kakutei("\b".repeat(graphemeLength(last.kakutei)));
+  const restored = { ...last.state };
+  context.state = restored;
+  context.lastKakutei = void 0;
+  if (context.mode !== last.mode) {
+    await modeChange(context, last.mode);
+  }
+  // show the candidate list again when it was shown at the kakutei
+  // (the popup is closed on every key press)
+  if (context.denops && restored.candidateIndex >= config.showCandidatesCount) {
+    await showCandidates(context.denops, restored);
+  }
 }
 
 // 確定キーの処理には強制的にひらがな入力に戻す物があるが、内部的な確定では必要ないため分けておく
