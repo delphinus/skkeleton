@@ -71,6 +71,61 @@ export async function kakutei(context: Context) {
   await initializeStateWithAbbrev(context, ["converter", "table"]);
 }
 
+// remember a kakutei done by a completion engine so that kakuteiUndo can take
+// it back as well
+// {inserted} is the string the engine has written to the buffer: the candidate
+// without its annotation, followed by the okurigana for an okuriari candidate
+export async function completionKakutei(
+  context: Context,
+  type: HenkanType,
+  midasi: string,
+  word: string,
+  inserted: string,
+) {
+  // the buffer has been rewritten by the engine, so an older kakutei is stale
+  context.lastKakutei = void 0;
+  context.pendingKakutei = void 0;
+  const state = context.state;
+  const candidateMod = modifyCandidate(word);
+  if (
+    state.type !== "input" ||
+    // give it up when the engine has not told what it wrote: there is no way
+    // to know how much of the buffer the kakutei owns then
+    candidateMod == null || !inserted.startsWith(candidateMod)
+  ) {
+    return;
+  }
+  // Note: the completion has never been in a henkan state, so the candidates
+  //       are looked up instead of being restored from a snapshot
+  //       this happens after the learning, hence the confirmed candidate comes
+  //       first and is the one to select
+  const lib = await currentLibrary.get();
+  const candidates = await lib.getHenkanResult(type, midasi);
+  const candidateIndex = candidates.indexOf(word);
+  if (candidateIndex < 0) {
+    return;
+  }
+  context.pendingKakutei = {
+    kakutei: inserted,
+    state: {
+      ...state,
+      type: "henkan",
+      mode: type,
+      affix: void 0,
+      word: midasi,
+      candidates,
+      candidateIndex,
+      feed: "",
+      // Note: the completion may have extended the reading which has been
+      //       typed, so take it from the midasi of the candidate
+      henkanFeed: type === "okuriari" ? midasi.slice(0, -1) : midasi,
+      okuriFeed: inserted.slice(candidateMod.length),
+      previousFeed: false,
+    },
+    mode: context.mode,
+  };
+}
+
 // take the last kakutei back into the candidate selection state
 export async function kakuteiUndo(context: Context) {
   const state = context.state;

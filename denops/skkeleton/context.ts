@@ -24,6 +24,11 @@ type KakuteiResult = {
   mode: string;
 };
 
+// a kakutei whose bufferText is not known yet
+// the completion engine writes to the buffer by itself, so where the cursor
+// ends up is only learned from the prevInput of the next key handling
+type PendingKakuteiResult = Omit<KakuteiResult, "bufferText">;
+
 export class Context {
   denops?: Denops;
   state: State = initializeState({});
@@ -41,6 +46,21 @@ export class Context {
     candidate: "",
   };
   lastKakutei: KakuteiResult | undefined;
+  pendingKakutei: PendingKakuteiResult | undefined;
+
+  // complete a kakutei done by a completion engine
+  // called on every key handling: prevInput has just been received from Vim,
+  // so it tells where the completion has left the cursor
+  resolvePendingKakutei() {
+    const pending = this.pendingKakutei;
+    if (!pending) {
+      return;
+    }
+    this.pendingKakutei = void 0;
+    this.lastKakutei = this.prevInput.endsWith(pending.kakutei)
+      ? { ...pending, bufferText: this.prevInput }
+      : void 0;
+  }
 
   kakutei(str: string) {
     this.preEdit.doKakutei(str);
