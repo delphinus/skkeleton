@@ -42,7 +42,15 @@ export class Source extends BaseSource<Never> {
       ),
     );
 
-    const chunks = okuriSplits(kana ?? "");
+    // config は skkeleton プラグイン側が持っているので dispatch で受け取る。
+    // 別モジュールとして読み込まれるため、config.ts を直接 import しても
+    // skkeleton#config() で設定した値は見えない。
+    const { completionOkuriMinStemLength } = await args.denops.dispatch(
+      "skkeleton",
+      "getConfig",
+    ) as { completionOkuriMinStemLength: number };
+
+    const chunks = okuriSplits(kana ?? "", completionOkuriMinStemLength);
     if (chunks.length === 0) {
       return [];
     }

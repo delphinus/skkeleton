@@ -32,6 +32,7 @@ export type SkkServerOptions = {
 export type ConfigOptions = {
   acceptIllegalResult: boolean;
   completionBackend: string;
+  completionOkuriMinStemLength: number;
   completionRankFile: string;
   databasePath: string;
   debug: boolean;

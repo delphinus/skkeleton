@@ -249,6 +249,23 @@ completionBackend                         *skkeleton-config-completionBackend*
         Note: 使用中の補完エンジンの自動判定は行いません。組み込み補完以外を
         使う場合は必ず設定してください。(|skkeleton-compatibility|)
 
+completionOkuriMinStemLength   *skkeleton-config-completionOkuriMinStemLength*
+        (デフォルト 0)
+        補完で送りありの候補を探すとき、語幹 (見出しの仮名の部分) の長さの
+        下限です。1 以下なら制限しません。
+        補完は送り仮名の位置が分からないため、読みを全ての位置で切って見出しを
+        作ります。「あくせ」なら「あ」+「くせ」まで試すので、語幹が 1 文字の
+        見出し (「あk」など) に当たります。こうした見出しは候補を多く持つため、
+        「開くせ」「空くせ」のような読みと無関係な候補が大量に並びます。
+        2 を指定するとこれらが落ち、「かんが」+「えかた」や「なりあ」+「がり」
+        のような組は残ります。
+        ただし送り仮名が 1 文字の組は、語幹が下限に満たなくても残します。
+        「あく」から「開く」を補完できなくなるのを避けるためです。
+        送りありの候補を出す ddc の `skkeleton_okuri` ソースと native
+        completefunc のどちらにも適用されます (|skkeleton-completion|)。
+        `skkeleton` ソースは送りなしの候補だけを返すため関係ありません。
+        送りあり変換 (▼) には影響しません。
+
 completionRankFile                       *skkeleton-config-completionRankFile*
         (デフォルト "")
         パスを指定すると補完候補の順番を記録するようになります。

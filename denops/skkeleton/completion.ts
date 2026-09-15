@@ -78,12 +78,19 @@ export function buildOkurinasiCompleteItems(
     .map(({ rank: _, ...item }) => item);
 }
 
+/**
+ * 送りありの候補を組み立てる。
+ *
+ * `minStemLength` は `okuriSplits` にそのまま渡す。1 以下なら読みを全ての位置で
+ * 切る (従来の動作)。
+ */
 export async function buildOkuriariCompleteItems(
   kana: string,
   getCandidates: (midasi: string) => Promise<string[] | undefined>,
+  minStemLength = 0,
 ): Promise<CompleteItem[]> {
   const items: CompleteItem[] = [];
-  for (const [word, okuri] of okuriSplits(kana)) {
+  for (const [word, okuri] of okuriSplits(kana, minStemLength)) {
     const midasi = getOkuriStr(word, okuri);
     const candidates = await getCandidates(midasi);
     if (candidates == null) {
@@ -115,9 +122,14 @@ export async function buildCompleteItems(
   rankData: RankData,
   kana: string,
   getOkuriariCandidates: (midasi: string) => Promise<string[] | undefined>,
+  minStemLength = 0,
 ): Promise<CompleteItem[]> {
   return [
     ...buildOkurinasiCompleteItems(candidates, rankData),
-    ...await buildOkuriariCompleteItems(kana, getOkuriariCandidates),
+    ...await buildOkuriariCompleteItems(
+      kana,
+      getOkuriariCandidates,
+      minStemLength,
+    ),
   ];
 }

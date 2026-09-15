@@ -437,6 +437,7 @@ export const main: Entrypoint = async (denops) => {
         lib.getRanks(state.henkanFeed),
         state.henkanFeed,
         (midasi) => lib.getHenkanResult("okuriari", midasi),
+        config.completionOkuriMinStemLength,
       );
     },
     async registerHenkanResult(midasi: unknown, word: unknown) {

@@ -96,13 +96,31 @@ export function getOkuriStr(word: string, okuri: string): string {
   return word + alpha;
 }
 
-export function okuriSplits(text: string): [string, string][] {
+/**
+ * 読みを送り仮名の位置で切った [語幹, 送り仮名] の組を、送り仮名が短いものから
+ * 順に返す。
+ *
+ * `minStemLength` に 2 以上を渡すと、語幹がその文字数に満たない組を落とす。
+ * 補完のように送り仮名の位置を推測して引く場面では、全ての位置で切るので語幹が
+ * 1 文字の組 (「あ」+「くせ」など) まで生まれる。語幹が短い見出しは候補を多く
+ * 持つため、読みと無関係な候補 (「開くせ」…) が大量に出る。
+ *
+ * ただし送り仮名が 1 文字の組 (「あ」+「く」→「開く」) は、語幹が短くても読みと
+ * 候補が食い違わないので落とさない。1 以下なら制限しない。
+ */
+export function okuriSplits(
+  text: string,
+  minStemLength = 0,
+): [string, string][] {
   if (text === "") {
     return [];
   }
   const chars = [...text];
   const result: [string, string][] = [];
   for (let i = chars.length - 1; i >= 1; i--) {
+    if (i < minStemLength && chars.length - i > 1) {
+      continue;
+    }
     result.push([chars.slice(0, i).join(""), chars.slice(i).join("")]);
   }
   return result;

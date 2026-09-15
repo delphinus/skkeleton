@@ -108,3 +108,55 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "buildCompleteItems with minStemLength",
+  async fn() {
+    const looked: string[] = [];
+    const getCandidates = (midasi: string) => {
+      looked.push(midasi);
+      return Promise.resolve(["当"]);
+    };
+
+    // 制限なしでは読みを全ての位置で切るので、語幹 1 文字の見出しまで引く
+    looked.length = 0;
+    const all = await buildCompleteItems([], [], "あたり", getCandidates);
+    assertEquals(looked, ["あたr", "あt"]);
+    assertEquals(all.map((item) => item.word), ["当り", "当たり"]);
+
+    // 語幹 2 文字以上に絞ると、「あ」+「たり」が落ちる
+    looked.length = 0;
+    const limited = await buildCompleteItems(
+      [],
+      [],
+      "あたり",
+      getCandidates,
+      2,
+    );
+    assertEquals(looked, ["あたr"]);
+    assertEquals(limited.map((item) => item.word), ["当り"]);
+
+    // 語幹が下限に満たなくても、送り仮名 1 文字の組は残る
+    looked.length = 0;
+    const shortKana = await buildCompleteItems(
+      [],
+      [],
+      "あた",
+      getCandidates,
+      2,
+    );
+    assertEquals(looked, ["あt"]);
+    assertEquals(shortKana.map((item) => item.word), ["当た"]);
+
+    // 送りなしの候補は下限の影響を受けない
+    looked.length = 0;
+    const withOkurinasi = await buildCompleteItems(
+      [["あ", ["亜"]]],
+      [],
+      "あたり",
+      getCandidates,
+      2,
+    );
+    assertEquals(withOkurinasi.map((item) => item.word), ["亜", "当り"]);
+  },
+});

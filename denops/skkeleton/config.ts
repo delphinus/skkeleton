@@ -11,6 +11,7 @@ export const config: Omit<ConfigOptions, "globalDictionaries"> & {
 } = {
   acceptIllegalResult: false,
   completionBackend: "native",
+  completionOkuriMinStemLength: 0,
   completionRankFile: "",
   databasePath: "",
   debug: false,
@@ -53,6 +54,7 @@ function ensureEncoding(x: unknown): Encoding {
 const validators: Validators = {
   acceptIllegalResult: (x) => ensure(x, is.Boolean),
   completionBackend: (x) => ensure(x, is.String),
+  completionOkuriMinStemLength: (x) => ensure(x, is.Number),
   completionRankFile: (x) => ensure(x, is.String),
   databasePath: (x) => ensure(x, is.String),
   debug: (x) => ensure(x, is.Boolean),
