@@ -417,6 +417,35 @@ function! s:remove_marker_henkan(completing) abort
   endif
 endfunction
 
+" Put the cursor right after a kakutei which is still in the line, so that
+" |skkeleton-functions-kakuteiUndo| can delete it by feeding backspaces.
+" {before} is the line in front of the kakutei as it was when it happened, so
+" {before} .. {kakutei} has to still be the head of the line. Anything typed
+" after the kakutei is free to differ -- that is the case this is here for --
+" but an edit which has displaced or rewritten the kakutei itself makes this
+" give up rather than delete text it cannot account for.
+" Insert mode only: the command line has no line to walk back into, and a
+" terminal buffer is not ours to edit.
+function! skkeleton#locate_kakutei(bufnr, lnum, before, kakutei) abort
+  if mode() !=# 'i' || a:bufnr != bufnr('%') || a:lnum != line('.')
+    return v:false
+  endif
+  let head = a:before .. a:kakutei
+  if strpart(getline('.'), 0, strlen(head)) !=# head
+    return v:false
+  endif
+  let target = strlen(head) + 1
+  if col('.') != target
+    " Note: this does not break the undo block the insert is building up, so
+    "       the kakutei and its undo still go back with a single |u|
+    "       (|undojoin| would not help if it did: the deletion is fed back as
+    "       keys once |skkeleton#handle()| has returned, which is past the
+    "       command this runs in)
+    call cursor(a:lnum, target)
+  endif
+  return v:true
+endfunction
+
 function! skkeleton#initialize() abort
   call skkeleton#notify_async('initialize', [])
 endfunction
