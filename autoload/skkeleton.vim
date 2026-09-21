@@ -268,6 +268,15 @@ function! skkeleton#handle(func, opts) abort
     let result = "\<Cmd>" .. result[5:] .. "\<CR>"
   endif
 
+  " Put the cursor back where |skkeleton-functions-kakuteiUndo| walked away
+  " from. This has to happen after the text has landed, so it rides along at
+  " the end of the same feedkeys() rather than being called from here.
+  let restore_col = get(ret, 'restoreCol', 0)
+  if restore_col > 0
+    let result ..= printf("\<Cmd>call skkeleton#restore_point(%d, %d)\<CR>",
+    \ get(ret, 'restoreLnum', 0), restore_col)
+  endif
+
   call skkeleton#doautocmd()
 
   if get(a:opts, 'expr', v:false)
@@ -444,6 +453,19 @@ function! skkeleton#locate_kakutei(bufnr, lnum, before, kakutei) abort
     call cursor(a:lnum, target)
   endif
   return v:true
+endfunction
+
+" Put the cursor at {col}, a byte column of {lnum}, once whatever replaced the
+" taken back kakutei has been written. Fed at the end of the same keys as that
+" kakutei, so the line is already the final one by the time this runs.
+" {lnum} is where the undo happened: a kakutei followed by a newline leaves the
+" cursor on another line, and a column of the line it came from means nothing
+" there.
+function! skkeleton#restore_point(lnum, col) abort
+  if mode() !=# 'i' || line('.') != a:lnum
+    return
+  endif
+  call cursor(a:lnum, a:col)
 endfunction
 
 function! skkeleton#initialize() abort
