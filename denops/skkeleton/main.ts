@@ -44,6 +44,11 @@ type HandleResult = {
     phase: string;
   };
   result: string;
+  // where to put the cursor once {result} has been applied, or 0 for leaving it
+  // where the applied text ends
+  // |skkeleton-functions-kakuteiUndo| is the only thing asking for this so far
+  restoreLnum: number;
+  restoreCol: number;
 };
 
 const isOpts = is.ObjectOf({
@@ -233,7 +238,15 @@ async function handle(
 }
 
 function buildResult(result: string): HandleResult {
-  const state = currentContext.get().state;
+  const context = currentContext.get();
+  const state = context.state;
+  // Note: asked for once and then forgotten, so that it does not travel along
+  //       with every following key handling
+  //       dropped when the handling has left something pending: an uppercase
+  //       key confirms a henkan and opens a new one after it in one go, and
+  //       the cursor belongs to the one it has opened
+  const restore = context.hasPendingInput ? void 0 : context.restorePoint;
+  context.restorePoint = void 0;
   let phase = "";
   if (state.type === "input") {
     if (state.mode === "okurinasi") {
@@ -252,6 +265,8 @@ function buildResult(result: string): HandleResult {
       phase,
     },
     result,
+    restoreLnum: restore?.lnum ?? 0,
+    restoreCol: restore?.col ?? 0,
   };
 }
 
@@ -301,6 +316,18 @@ export const main: Entrypoint = async (denops) => {
       context.prevInput = prevInput;
       context.bufnr = bufnr;
       context.lnum = lnum;
+      // Note: a column |skkeleton-functions-kakuteiUndo| has remembered is only
+      //       good while skkeleton is still writing where the undo happened.
+      //       Once there is nothing pending -- the reading taken all the way
+      //       back with cancel, say -- nobody is going to confirm anything
+      //       there, and the column must not move the cursor on some unrelated
+      //       kakutei later on.
+      //       asked before the mismatch below resets the state: a completion
+      //       engine writing its preview into the buffer is a mismatch, and
+      //       the reading it is about to complete is very much still pending
+      if (!context.hasPendingInput) {
+        context.forgetPointRestore();
+      }
       // only now is it known where a kakutei has been written to the buffer
       const resolved = context.resolvePendingKakutei();
       // 補完の後などpreEditとバッファが不一致している状態の時にリセットする

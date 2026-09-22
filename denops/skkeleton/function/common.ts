@@ -37,6 +37,13 @@ export async function kakutei(context: Context) {
       context.kakuteiWithUndoPoint(ret);
       // Note: remember what is needed to take this kakutei back
       context.recordKakutei("henkan", ret, snapshot);
+      // Note: a henkan which an undo has restored owes the cursor its place
+      //       back, now that the replacement is known and its length with it
+      //       the text is written by the keys this handling returns, so the
+      //       point rides along with them (see |skkeleton#restore_point()|)
+      //       whether it is used at all is decided once the handling is over:
+      //       the same key can confirm a henkan and open a new one after it
+      context.restorePoint = context.usePointRestore(ret);
       break;
     }
     case "input": {
@@ -79,6 +86,25 @@ export async function completionKakutei(
     candidateMod == null || !inserted.startsWith(candidateMod)
   ) {
     return;
+  }
+  // Note: the engine has already written, so unlike a kakutei out of a henkan
+  //       there are no keys for the point to ride along with and Vim is told
+  //       right away
+  //       asked before the lookup below, because the buffer holds the text even
+  //       when the candidate turns out not to be in the dictionary
+  const restore = context.usePointRestore(inserted);
+  // Note: the report can arrive after a key handling has started something else
+  //       where the cursor now is -- a new henkan point, or a reading being
+  //       typed on -- and the cursor belongs to that
+  const onThisReading = state.mode !== "direct" && state.henkanFeed === midasi;
+  if (
+    restore && (!context.hasPendingInput || onThisReading) && context.denops
+  ) {
+    await context.denops.call(
+      "skkeleton#restore_point",
+      restore.lnum,
+      restore.col,
+    );
   }
   // Note: the completion has never been in a henkan state, so the candidates
   //       are looked up instead of being restored from a snapshot
@@ -163,6 +189,10 @@ export async function kakuteiUndo(context: Context) {
   context.kakutei("\b".repeat(graphemeLength(last.kakutei)));
   const restored = { ...last.state };
   context.state = restored;
+  // Note: prevInput still tells where the cursor was when the undo was asked
+  //       for, which is where the kakutei picking another candidate puts it
+  //       back
+  context.recordPointRestore(last.kakutei, last.bufferText);
   context.invalidateKakutei();
   if (context.mode !== last.mode) {
     await modeChange(context, last.mode);
