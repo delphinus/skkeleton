@@ -52,16 +52,49 @@ function stubDenops(called: unknown[][], ret: unknown = void 0): Denops {
   } as unknown as Denops;
 }
 
+// a stub which answers |skkeleton#locate_kakutei()| out of the buffer, so that
+// the undo can walk the cursor back the way it does in Vim
+function locatingDenops(buffer: Buffer): Denops {
+  return {
+    call: (name: unknown, ...args: unknown[]) => {
+      if (name !== "skkeleton#locate_kakutei") {
+        return Promise.resolve(void 0);
+      }
+      const [, , before, kakutei] = args as [number, number, string, string];
+      return Promise.resolve(buffer.locate(before, kakutei));
+    },
+    cmd: () => Promise.resolve(),
+  } as unknown as Denops;
+}
+
 // mimics how Vim applies the output of preEdit to the buffer
 class Buffer {
   #segmenter = new Intl.Segmenter("ja");
   #context: Context;
+  // the line in front of the cursor, which is what Vim reports as prevInput
   text: string;
+  // the rest of the line: only ever filled by walking the cursor back over
+  // what has been typed after a kakutei
+  tail = "";
 
   constructor(context: Context, text = "") {
     this.#context = context;
     this.text = text;
     this.#context.prevInput = text;
+  }
+
+  // mimics |skkeleton#locate_kakutei()|: walk the cursor back to the end of the
+  // kakutei, leaving what has been typed after it where it is
+  locate(before: string, kakutei: string): boolean {
+    const head = before + kakutei;
+    const line = this.text + this.tail;
+    if (!line.startsWith(head)) {
+      return false;
+    }
+    this.text = head;
+    this.tail = line.slice(head.length);
+    this.#context.prevInput = this.text;
+    return true;
   }
 
   // apply the output of preEdit and update the line before the cursor
@@ -511,6 +544,61 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "kakutei undo leaves a rewritten kakutei alone",
+  async fn() {
+    const context = new Context();
+    const buffer = new Buffer(context, "これは");
+    context.denops = locatingDenops(buffer);
+    await dispatch(context, ";kanji ");
+    buffer.flush();
+    await kakutei(context);
+    buffer.flush();
+    assertEquals(buffer.text, "これは漢字");
+
+    // something has rewritten the line in front of the kakutei, so it is no
+    // longer where it was written and must not be deleted from there
+    buffer.text = "それは漢字";
+    context.prevInput = buffer.text;
+    await kakuteiUndo(context);
+    assertEquals(context.toString(), "");
+    assertEquals(buffer.flush(), "");
+    assertEquals(buffer.text, "それは漢字");
+  },
+});
+
+Deno.test({
+  name: "kakutei undo after typing on",
+  async fn() {
+    const context = new Context();
+    const buffer = new Buffer(context, "これは");
+    context.denops = locatingDenops(buffer);
+    await dispatch(context, ";kanji ");
+    buffer.flush();
+    await kakutei(context);
+    buffer.flush();
+    assertEquals(buffer.text, "これは漢字");
+
+    // a mis-conversion is noticed after typing on
+    await dispatch(context, "desu");
+    buffer.flush();
+    assertEquals(buffer.text, "これは漢字です");
+
+    // the cursor walks back to the kakutei and only that is deleted
+    await kakuteiUndo(context);
+    assertEquals(context.toString(), "▼漢字");
+    assertEquals(buffer.flush(), "\b\b▼漢字");
+    assertEquals(buffer.text, "これは▼漢字");
+    assertEquals(buffer.tail, "です");
+
+    // picking another candidate rewrites the kakutei in place
+    await dispatch(context, " ");
+    await kakutei(context);
+    buffer.flush();
+    assertEquals(buffer.text + buffer.tail, "これは感じです");
+  },
+});
+
 test({
   mode: "nvim", // can input mode test only in nvim
   name: "kakutei undo in a buffer",
@@ -572,6 +660,43 @@ test({
     await denops.cmd('call skkeleton#handle("handleKey", {"key": "<c-u>"})');
     assertEquals(currentContext.get().toString(), "▼テスト");
     assertEquals(await fn.getline(denops, "."), "▼テスト");
+  },
+});
+
+test({
+  mode: "nvim", // can input mode test only in nvim
+  name: "kakutei undo in a buffer after typing on",
+  async fn(denops: Denops) {
+    const l = await currentLibrary.get();
+    await l.registerHenkanResult("okurinasi", "てすと", "手酢戸");
+    await l.registerHenkanResult("okurinasi", "てすと", "テスト");
+    await denops.cmd(
+      'call skkeleton#register_keymap("input", "<C-u>", "kakuteiUndo")',
+    );
+    await denops.cmd("startinsert");
+
+    for (const key of ["T", "e", "s", "u", "t", "o", " ", "<nl>"]) {
+      await denops.cmd(`call skkeleton#handle("handleKey", {"key": "${key}"})`);
+    }
+    assertEquals(await fn.getline(denops, "."), "テスト");
+
+    // the wrong candidate goes unnoticed until the rest has been typed, which
+    // no longer has to be deleted before taking the kakutei back
+    for (const key of ["s", "u", "r", "u"]) {
+      await denops.cmd(`call skkeleton#handle("handleKey", {"key": "${key}"})`);
+    }
+    assertEquals(await fn.getline(denops, "."), "テストする");
+
+    // the cursor walks back over what has been typed, and only the kakutei is
+    // replaced by the henkan state
+    await denops.cmd('call skkeleton#handle("handleKey", {"key": "<c-u>"})');
+    assertEquals(currentContext.get().toString(), "▼テスト");
+    assertEquals(await fn.getline(denops, "."), "▼テストする");
+
+    // picking another candidate rewrites the kakutei in place
+    await denops.cmd('call skkeleton#handle("handleKey", {"key": "<space>"})');
+    await denops.cmd('call skkeleton#handle("handleKey", {"key": "<nl>"})');
+    assertEquals(await fn.getline(denops, "."), "手酢戸する");
   },
 });
 

@@ -1,6 +1,6 @@
 import { modifyCandidate } from "../candidate.ts";
 import { config } from "../config.ts";
-import { Context } from "../context.ts";
+import { Context, KakuteiResult } from "../context.ts";
 import { HenkanType } from "../dictionary.ts";
 import { initializeStateWithAbbrev, modeChange } from "../mode.ts";
 import { graphemeLength } from "../preedit.ts";
@@ -107,11 +107,44 @@ export async function completionKakutei(
   });
 }
 
+// put the cursor right after the confirmed string, which is where the undo
+// deletes it by feeding backspaces
+//
+// a mis-conversion is usually noticed after typing on, so the cursor having
+// moved past the kakutei must not give up on it: ask Vim to walk back to it,
+// leaving whatever has been typed since then alone. Vim only moves when the
+// confirmed string is still where it was written, so an edit which has rewritten
+// or displaced it takes the undo out of reach instead of deleting the wrong
+// text.
+//
+// the cursor never having left is the common case and is answered here, without
+// a round-trip to Vim.
+async function locateKakutei(
+  context: Context,
+  last: KakuteiResult,
+): Promise<boolean> {
+  if (context.isRightAfterKakutei(last)) {
+    return true;
+  }
+  if (!context.denops) {
+    return false;
+  }
+  const before = last.bufferText.slice(
+    0,
+    last.bufferText.length - last.kakutei.length,
+  );
+  return await context.denops.call(
+    "skkeleton#locate_kakutei",
+    last.bufnr,
+    last.lnum,
+    before,
+    last.kakutei,
+  ) as boolean;
+}
+
 // take the last kakutei back into the candidate selection state
 export async function kakuteiUndo(context: Context) {
   const state = context.state;
-  // Note: takeBackableKakutei() makes sure that the confirmed string is still
-  //       right before the cursor: this deletes it from the buffer
   const last = context.takeBackableKakutei();
   if (
     !last ||
@@ -119,6 +152,9 @@ export async function kakuteiUndo(context: Context) {
     state.mode !== "direct" ||
     state.feed !== ""
   ) {
+    return;
+  }
+  if (!await locateKakutei(context, last)) {
     return;
   }
   if (config.debug) {

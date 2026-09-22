@@ -17,7 +17,7 @@ type CandidateResult = {
 type KakuteiType = "henkan" | "completion";
 
 // what |skkeleton-functions-kakuteiUndo| needs to take the last kakutei back
-type KakuteiResult = {
+export type KakuteiResult = {
   type: KakuteiType;
   // the string the kakutei has inserted into the buffer
   kakutei: string;
@@ -32,7 +32,8 @@ type KakuteiResult = {
   bufnr: number;
   lnum: number;
   // the line before the cursor as it was right after the kakutei
-  // used to make sure that the buffer has not been changed since then
+  // the undo needs the confirmed string to still be there: its tail is the
+  // kakutei itself, and the rest is what has to still precede it
   bufferText: string;
 };
 
@@ -124,10 +125,14 @@ export class Context {
   }
 
   // the kakutei which can be taken back right now, if any
+  // Note: that the confirmed string is still in the buffer is not decided here
+  //       the cursor may have moved on since the kakutei, and only Vim knows
+  //       what the line looks like beyond it, so kakuteiUndo() asks before it
+  //       deletes anything
   takeBackableKakutei(): KakuteiResult | undefined {
     const last = this.lastKakutei;
     if (
-      !last || !this.#isAt(last) || this.prevInput !== last.bufferText ||
+      !last || !this.#isAt(last) ||
       // Note: a key handled before this one within the same handling has
       //       written to the buffer already, which prevInput cannot know yet
       //       (|skkeleton#handle()| takes a list of keys)
@@ -136,6 +141,12 @@ export class Context {
       return void 0;
     }
     return last;
+  }
+
+  // whether the cursor is right after the last kakutei, which is where the
+  // undo can delete it without moving anything
+  isRightAfterKakutei(last: KakuteiResult): boolean {
+    return this.prevInput === last.bufferText;
   }
 
   // whether Vim is still where the kakutei has happened
